@@ -1,43 +1,41 @@
-module.exports = async (req, res) => {
-  const code = `
-const { spawnSync, spawn } = require('child_process');
-const { existsSync, writeFileSync } = require('fs');
-const path = require('path');
+export default function handler(req, res) {
+  if (req.method === "POST") {
+    const { sessionId } = req.body;
 
-const SESSION_ID = 'updateThis'; // <-- Remplace par ta vraie SESSION_ID
-
-function startNode() {
-  const child = spawn('node', ['index.js'], { cwd: 'PROJET-SPIDER-NET-BOZ', stdio: 'inherit' });
-  child.on('exit', (code) => {
-    if (code !== 0) {
-      console.log('Redémarrage du bot...');
-      startNode();
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID manquant !" });
     }
-  });
-}
 
-function cloneRepository() {
-  const cloneResult = spawnSync(
-    'git',
-    ['clone', 'https://github.com/Junior1253/PROJET-SPIDER-NET-BOZ.git', 'PROJET-SPIDER-NET-BOZ'],
-    { stdio: 'inherit' }
-  );
+    const fileContent = `
+      const { makeWASocket, useSingleFileAuthState } = require("@whiskeysockets/baileys");
+      const { state, saveState } = useSingleFileAuthState("./auth_info.json");
 
-  if (cloneResult.error) {
-    throw new Error('Erreur lors du clonage du repo.');
+      async function startBot() {
+        const sock = makeWASocket({
+          auth: state,
+          printQRInTerminal: true
+        });
+
+        sock.ev.on("creds.update", saveState);
+
+        sock.ev.on("messages.upsert", async ({ messages }) => {
+          const m = messages[0];
+          if (!m.message) return;
+
+          const text = m.message.conversation || m.message.extendedTextMessage?.text || "";
+          if (text.toLowerCase() === "ping") {
+            await sock.sendMessage(m.key.remoteJid, { text: "pong ✅" });
+          }
+        });
+      }
+
+      startBot();
+    `;
+
+    res.setHeader("Content-Disposition", "attachment; filename=index.js");
+    res.setHeader("Content-Type", "application/javascript");
+    res.send(fileContent);
+  } else {
+    res.status(405).json({ error: "Méthode non autorisée" });
   }
-
-  const configPath = 'PROJET-SPIDER-NET-BOZ/config.env';
-  writeFileSync(configPath, \`SESSION_ID=\${SESSION_ID}\`);
 }
-
-if (!existsSync('PROJET-SPIDER-NET-BOZ')) {
-  cloneRepository();
-}
-startNode();
-  `;
-
-  res.setHeader("Content-disposition", "attachment; filename=index.js");
-  res.setHeader("Content-Type", "application/javascript");
-  res.end(code);
-};
